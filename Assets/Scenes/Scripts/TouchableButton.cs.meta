@@ -1,0 +1,12 @@
+fileFormatVersion: 2
+guid: 5e236d08e8cb52a438352911bfab41ab
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - touchSound: {fileID: 8300000, guid: 28778bf09089d254bbeeb5c5c473a9cb, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
