@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq; // OrderBy (셔플) 기능을 사용하기 위해 필요
+using System.IO; // [추가] Path.Combine을 사용하기 위해 필요
 
 // --- 데이터 구조 정의 ---
 
@@ -16,15 +17,11 @@ public enum ExperimentCondition
     Confusion // 시각-촉각 불일치 조건
 }
 
-// 인지 부하 조건을 위한 열거형
-public enum CognitiveLoadCondition { Low, High }
-
 // 하나의 실험 블록에 대한 설정을 담는 클래스
 [System.Serializable]
 public class ExperimentBlock
 {
     public ExperimentCondition visualCondition;
-    public CognitiveLoadCondition loadCondition;
 }
 
 
@@ -52,15 +49,17 @@ public class ExperimentManager : MonoBehaviour
     public AudioClip experimentEndClip;
 
     [Header("--- 필수 연결 요소 ---")]
+    [Tooltip("씬에 있는 오른손의 HandPoseLogger를 연결하세요.")]
+    public HandPoseLogger rightHandLogger;
     [Tooltip("씬에 있는 ObjectSpawner를 연결하세요.")]
     public ObjectSpawner objectSpawner;
     [Tooltip("씬에 있는 UIManager를 연결하세요.")]
     public UIManager uiManager;
+    [Tooltip("씬에 있는 GrabManager를 연결하세요.")]
+    public GrabManager grabManager;
     [Tooltip("씬에 있는 DataManager를 연결하세요.")]
     public DataManager dataManager;
-    [Tooltip("씬에 있는 CognitiveLoadManager를 연결하세요.")]
-    public CognitiveLoadManager cognitiveLoadManager;
-    [Tooltip("씬에 있는 모든 컨베이어 벨트를 연결하세요.")]
+
     public ConveyorBeltSolid[] conveyorBelts;
 
     // --- 내부 변수 ---
@@ -79,18 +78,41 @@ public class ExperimentManager : MonoBehaviour
 
     void Start()
     {
+        // [디버깅] 시작 시점의 주요 컴포넌트 연결 상태를 확인합니다.
+        Debug.Log($"[ExperimentManager] Start 시작. DataManager: {(dataManager != null)}, GrabManager: {(grabManager != null)}, RightHandLogger: {(rightHandLogger != null)}");
+
         audioSource = GetComponent<AudioSource>();
-        // --- 디버깅용 로그 추가 ---
-        if (audioSource == null)
+        if (audioSource == null) Debug.LogError("AudioSource 컴포넌트를 찾을 수 없습니다!");
+
+        // 1. ExperimentManager가 직접 모든 경로를 생성합니다.
+        string rootDataPath = Path.Combine(Application.dataPath, "Data");
+        string playerDataPath = Path.Combine(rootDataPath, playerName);
+        string handPoseLogPath = Path.Combine(playerDataPath, $"{playerName}_Hand_Pose");
+
+        // 2. 각 폴더가 존재하지 않으면 생성합니다.
+        if (!Directory.Exists(playerDataPath)) Directory.CreateDirectory(playerDataPath);
+        if (!Directory.Exists(handPoseLogPath)) Directory.CreateDirectory(handPoseLogPath);
+
+        // 3. 생성된 경로를 각 매니저에 전달하며 초기화합니다.
+        dataManager.Initialize(playerName, playerDataPath);
+
+        if (grabManager != null)
         {
-            Debug.LogError("AudioSource 컴포넌트를 찾을 수 없습니다!");
+            grabManager.Initialize(playerName, playerDataPath);
         }
-        if (tutorialStartClip == null)
+        else
         {
-            Debug.LogError("!!! Tutorial Start Clip 변수가 비어있습니다(null)!");
+            Debug.LogError("GrabManager가 연결되지 않았습니다!");
         }
+
+        if (rightHandLogger != null)
+        {
+            rightHandLogger.Initialize(playerName, handPoseLogPath);
+        }
+        // --- 수정 끝 ---
+
+
         PrepareExperimentSequence();
-        dataManager.SetParticipantInfo(playerName);
         StartCoroutine(ExperimentFlowRoutine());
     }
 
@@ -103,7 +125,7 @@ public class ExperimentManager : MonoBehaviour
         for (int i = 0; i < experimentSequence.Count; i++)
         {
             var block = experimentSequence[i];
-            Debug.Log($"  {i + 1}. Visual: {block.visualCondition} / Load: {block.loadCondition}");
+            Debug.Log($"  {i + 1}. Visual: {block.visualCondition}");
         }
     }
 
@@ -114,11 +136,20 @@ public class ExperimentManager : MonoBehaviour
 
         // --- 1. 튜토리얼 단계 ---
         currentState = ExperimentState.Tutorial;
+
+        // [수정] 튜토리얼 공을 '생성'하는 대신 '활성화'하고 Fade-in 효과를 시작합니다.
+        objectSpawner.ActivateTutorialBalls();
+        StartCoroutine(objectSpawner.FadeInTutorialBalls());
+
         uiManager.ShowInstruction("앞에 놓인 5개의 공은 각각 단단한 정도가 다릅니다.\n각 공의 강성 차이를 충분히 익힌 후,\n준비가 되면 오른쪽 '확인' 버튼을 눌러주세요.");
         if (tutorialStartClip != null) audioSource.PlayOneShot(tutorialStartClip);
 
         uiManager.ShowTutorialButtons();
         yield return new WaitUntil(() => hasConfirmedTutorial);
+
+        // [수정] 튜토리얼 공을 '파괴'하는 대신 '비활성화' 합니다.
+        objectSpawner.DeactivateTutorialBalls();
+        uiManager.HideAllButtons(); // 튜토리얼 버튼 숨기기
 
         // --- 2. 메인 실험 블록 반복 ---
         uiManager.ShowMainGameButtons();
@@ -126,11 +157,23 @@ public class ExperimentManager : MonoBehaviour
         while (currentBlockIndex < experimentSequence.Count)
         {
             ExperimentBlock currentBlock = experimentSequence[currentBlockIndex];
+            string visualCondStr = currentBlock.visualCondition.ToString();
 
             SetAllBeltsMoving(true, conveyorBeltSpeed);
 
             currentState = ExperimentState.MainBlock;
-            dataManager.SetCurrentBlockInfo(currentBlock.visualCondition.ToString(), currentBlock.loadCondition.ToString());
+
+            // --- [수정] 모든 데이터 관리자에 현재 블록 정보 전달 ---
+            dataManager.SetCurrentBlockInfo(visualCondStr);
+            if (grabManager != null)
+            {
+                grabManager.SetCurrentBlockInfo(visualCondStr);
+            }
+            if (rightHandLogger != null)
+            {
+                rightHandLogger.SetCurrentBlockInfo(visualCondStr);
+            }
+
             uiManager.ShowInstruction($"{currentBlockIndex + 1} / {experimentSequence.Count} 번째 블록을 시작합니다.");
             if (blockStartClip != null) audioSource.PlayOneShot(blockStartClip);
 
@@ -138,17 +181,18 @@ public class ExperimentManager : MonoBehaviour
             uiManager.HideInstruction();
             uiManager.ShowMainGameButtons();
 
-            // 관리자들에게 현재 블록 시작 명령
+            // --- Spawner에 블록 시작을 알립니다 ---
             objectSpawner.StartSpawningForBlock(currentBlock.visualCondition, ballsPerBlock);
-            cognitiveLoadManager.StartBlock(currentBlock.loadCondition);
-            SetAllBeltsMoving(true, conveyorBeltSpeed);
 
             // Spawner가 모든 공 생성을 마칠 때까지 대기
             yield return new WaitUntil(() => objectSpawner.IsBlockFinished());
             yield return new WaitForSeconds(2); // 마지막 공이 처리될 시간 확보
 
-            // 현재 블록의 부가 과제 종료
-            cognitiveLoadManager.StopBlock();
+            // --- 추가: 블록 종료 시 GrabManager의 카운트 초기화 ---
+            if (grabManager != null)
+            {
+                grabManager.ResetBlockCounts();
+            }
 
             objectSpawner.ClearAllSpawnedObjects();
 

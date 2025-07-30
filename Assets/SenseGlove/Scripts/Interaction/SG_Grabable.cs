@@ -8,6 +8,11 @@ namespace SG
     /// Grabables override the wrist position- and rotation, drawing the hand on the spot you grabbed it. </summary>
     public class SG_Grabable : SG_Interactable
     {
+        // --- 추가: 잡기 이벤트를 외부에 알리기 위한 static event ---
+        public static event System.Action<SG_Grabable> OnObjectGrabbed;
+        [Header("Experiment Options")]
+        public bool isTutorialObject = false;
+
         /// <summary> How the rotation of a Grabable is determined when held with two hands. </summary>
         public enum DualHandMode
         {
@@ -285,37 +290,35 @@ namespace SG
         protected override bool StartGrab(SG_GrabScript grabScript, out GrabArguments grabArgs)
         {
             bool imGrabbed = base.StartGrab(grabScript, out grabArgs);
+
+            // --- [수정] 기존 카운트 및 파일 저장 로직을 모두 삭제하고 아래 코드로 대체 ---
             if (imGrabbed)
             {
+                // GrabManager를 비롯한 외부 스크립트에게 이 오브젝트가 잡혔음을 알림 (방송)
+                OnObjectGrabbed?.Invoke(this);
+
+                // 나머지 로직은 그대로 유지
                 UpdateLastGrabLocation();
 
-                //Update Physics Behaviour when grabbed for the first time
                 SG_HandPhysics handPhysics = grabScript.HandPhysics;
-                if (handPhysics != null && handPhysics.isActiveAndEnabled) //the hand has a RigidBody + physics colliders
+                if (handPhysics != null && handPhysics.isActiveAndEnabled)
                 {
-                    if (this.physicsBody != null) // I have a rigidBody. Add Hand Colliders to me as opposed to the hand
+                    if (this.physicsBody != null)
                     {
-                        //if (this.name.Contains("Coil"))
-                        //{
-                        //    Debug.Log("Incorporating fingers into my RigidBody");
-                        //}
                         handPhysics.SetCollisionParent(this.physicsBody);
                     }
                     else
                     {
-                       // Debug.Log("No PhysicsBody: Ignore Collision with Grabable");
-                        handPhysics.SetIgnoreCollision(this.GetPhysicsColliders(), true); // Just ignore the collision between this object's colliders and that of the hand.
+                        handPhysics.SetIgnoreCollision(this.GetPhysicsColliders(), true);
                     }
                 }
-
             }
+            // --- [수정 끝] ---
 
-            if (imGrabbed && this.grabbedBy.Count == 0) // I'm not yet grabbed by a GrabScript, and this new one was succesfull
+            if (imGrabbed && this.grabbedBy.Count == 0)
             {
                 if (this.rbDefaults != null)
                 {
-                    //must freeze rotation, but keep thine origianl constraints...
-                    //disable gravity (for now) so that it actually gets off the floor. Also freeze rotation because it gives the best behaviour from MoveRotation.
                     this.SetPhysicsbody(false, false, RigidbodyConstraints.FreezeRotation | rbDefaults.rbConstraints);
                 }
             }
@@ -348,7 +351,7 @@ namespace SG
                     else
                     {
                         //re-enable collision
-                       // Debug.Log("No PhysicsBody: Re-Enabling Collision");
+                        // Debug.Log("No PhysicsBody: Re-Enabling Collision");
                         handPhysics.SetIgnoreCollision(this.GetPhysicsColliders(), false);
                     }
                 }
@@ -380,7 +383,7 @@ namespace SG
                     physicsBody.angularVelocity = Vector3.zero;
                     physicsBody.velocity = Vector3.zero;
                     // this.IsKinematic = currKin;
-                   // Debug.Log("Tranferring. Zeroien velocity");
+                    // Debug.Log("Tranferring. Zeroien velocity");
                 }
             }
             //log my pos/rot on the change
@@ -536,7 +539,7 @@ namespace SG
                 safeguardFrame = -1;
             }
             //ToDo: Validate destroyed GrabScripts?
-            
+
             if (!this.IsGrabbed()) //Ensure 
             {
                 UpdateInteractable();

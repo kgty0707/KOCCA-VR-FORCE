@@ -9,7 +9,7 @@ namespace SG
 
     /// <summary> A layer to hover over and grab SG_Interactables. Can override hand tracking if a held object does. </summary>
 	public abstract class SG_GrabScript : SG_HandComponent
-	{
+    {
         //---------------------------------------------------------------------------------------------------------------------------------------------
         // Cooldown parameters
 
@@ -33,12 +33,12 @@ namespace SG
         [Header("Base GrabScript Components")]
         public GameObject handPoseSource;
 
-		/// <summary> The Source of Hand Tracking for this GrabScript - used for intention detection (a.k.a. do I want to grab something). </summary>
-		public IHandPoseProvider handPoseProvider;
+        /// <summary> The Source of Hand Tracking for this GrabScript - used for intention detection (a.k.a. do I want to grab something). </summary>
+        public IHandPoseProvider handPoseProvider;
 
 
-		/// <summary> The real-world "MidPoint" of the hand; used to determine where to move the virtual hand while grabbing onto an object </summary>
-		public Transform realGrabRefrence;
+        /// <summary> The real-world "MidPoint" of the hand; used to determine where to move the virtual hand while grabbing onto an object </summary>
+        public Transform realGrabRefrence;
 
         /// <summary> The "MidPoint" of the virtual hand. Objects we grab will attempt to move so that this matches the real world refrence. 
         /// Should correspond to the virtual pose (affected by OnHover/Physics) location! </summary>
@@ -58,8 +58,8 @@ namespace SG
         /// <remarks> If set to less than 0, it's ignored. If set to 0, you won't be able to grab something. </remarks>
         public int heldObjectLimit = 1;
 
-		/// <summary> Optional Debug Element, which is used to show the heldObjects array. </summary>
-		public TextMesh debugTxt;
+        /// <summary> Optional Debug Element, which is used to show the heldObjects array. </summary>
+        public TextMesh debugTxt;
 
         /// <summary> When linked to a TrackedHand, siad script detemines exactly when an update occurs. When unlinked, this script updates itself. </summary>
         protected bool updateSelf = true;
@@ -99,9 +99,9 @@ namespace SG
         protected override void CreateComponents()
         {
             // Just in case you haven''t assigned one via code yet.
-			if (handPoseProvider == null && this.handPoseSource != null)
+            if (handPoseProvider == null && this.handPoseSource != null)
             {
-				handPoseProvider = this.handPoseSource.GetComponent<IHandPoseProvider>();
+                handPoseProvider = this.handPoseSource.GetComponent<IHandPoseProvider>();
             }
             // Ensure a real hand refrence exists. Ideally, you've assigned this via the in
             if (realGrabRefrence == null)
@@ -149,7 +149,7 @@ namespace SG
         protected override void CollectDebugComponents(out List<GameObject> objects, out List<MeshRenderer> renderers)
         {
             base.CollectDebugComponents(out objects, out renderers);
-			Util.SG_Util.CollectGameObject(this.debugTxt, ref objects);
+            Util.SG_Util.CollectGameObject(this.debugTxt, ref objects);
             if (this.virtualHoverCollider != null)
             {
                 Util.SG_Util.CollectComponent(virtualHoverCollider, ref renderers);
@@ -162,15 +162,15 @@ namespace SG
         /// <param name="firstLink"></param>
         protected override void LinkToHand_Internal(SG_TrackedHand newHand, bool firstLink)
         {
-			// links this newHand.
+            // links this newHand.
             base.LinkToHand_Internal(newHand, firstLink);
 
             // The hand will call my update from now on.
             this.updateSelf = false;
 
-			//this is where I'm getting the HandPose from
-			this.handPoseProvider = newHand;
-            
+            //this is where I'm getting the HandPose from
+            this.handPoseProvider = newHand;
+
             //// Link the Real GrabReference to the Real Hand Tracking.
             realRefTracking.updateTime = SG_SimpleTracking.UpdateDuring.Off; //TrackedHand will update me
             Transform RhandTarget = newHand.GetTransform(SG_TrackedHand.TrackingLevel.RealHandPose, HandJoint.Wrist); //follow the real wrist. 
@@ -205,7 +205,7 @@ namespace SG
 
         public bool OnCooldown(SG_Interactable obj)
         {
-            for (int i=0; i<this.objsOnCoolDown.Count; i++)
+            for (int i = 0; i < this.objsOnCoolDown.Count; i++)
             {
                 if (objsOnCoolDown[i].interactable == obj)
                 {
@@ -217,7 +217,7 @@ namespace SG
 
         public void UpdateCooldowns(float dT)
         {
-            for (int i=0; i<this.objsOnCoolDown.Count;)
+            for (int i = 0; i < this.objsOnCoolDown.Count;)
             {
                 this.objsOnCoolDown[i].cooldownTimer += dT;
                 if (objsOnCoolDown[i].cooldownTimer >= objCooldownTime)
@@ -245,32 +245,32 @@ namespace SG
         /// <returns></returns>
         public void GrabRefOffsets(out Vector3 wristToGrab_pos, out Quaternion wristToGrab_rot)
         {
-			if (this.realRefTracking != null)
-			{
-				wristToGrab_pos = realRefTracking.PosOffset;
-				wristToGrab_rot = realRefTracking.RotOffset;
-			}
-			else
+            if (this.realRefTracking != null)
             {
-				wristToGrab_pos = Vector3.zero;
-				wristToGrab_rot = Quaternion.identity;
-			}
+                wristToGrab_pos = realRefTracking.PosOffset;
+                wristToGrab_rot = realRefTracking.RotOffset;
+            }
+            else
+            {
+                wristToGrab_pos = Vector3.zero;
+                wristToGrab_rot = Quaternion.identity;
+            }
         }
 
 
-		/// <summary> Debug text that shows the grabbed objects </summary>
-		public string GrabbedText
+        /// <summary> Debug text that shows the grabbed objects </summary>
+        public string GrabbedText
         {
-			get { return this.debugTxt != null ? debugTxt.text : ""; }
-			set { if (debugTxt != null) { debugTxt.text = value; } }
+            get { return this.debugTxt != null ? debugTxt.text : ""; }
+            set { if (debugTxt != null) { debugTxt.text = value; } }
         }
 
         /// <summary> Set the current GrabbedText to show the objects grabbed by this Script. </summary>
 		public virtual void UpdateDebugger()
         {
-			if (debugTxt != null)
+            if (debugTxt != null)
             {
-				GrabbedText = PrintHeldObjects();
+                GrabbedText = PrintHeldObjects();
             }
         }
 
@@ -279,7 +279,7 @@ namespace SG
         /// <returns></returns>
 		public string PrintHeldObjects(string delim = "\n")
         {
-			return Util.SG_Util.PrintContents(this.heldObjects, delim);
+            return Util.SG_Util.PrintContents(this.heldObjects, delim);
         }
 
         public SG_Interactable[] GrabbedObjects()
@@ -296,19 +296,19 @@ namespace SG
         /// <returns></returns>
         public virtual bool ControlsHandLocation()
         {
-			for (int i=0; i<this.heldObjects.Count; i++)
+            for (int i = 0; i < this.heldObjects.Count; i++)
             {
-				if (this.heldObjects[i].ControlsHandLocation()) { return true; }
+                if (this.heldObjects[i].ControlsHandLocation()) { return true; }
             }
-			return false;
+            return false;
         }
 
         /// <summary> Updates the positions / rotations of held objects so we can draw the hand on the most up-to-date location. </summary>
         public virtual void UpdateGrabbedObjects()
         {
-			this.realRefTracking.UpdateLocation(); //makes sure these is always up to date and not a frame behind.
-			this.virtualRefTracking.UpdateLocation();
-			for (int i = 0; i < this.heldObjects.Count; i++)
+            this.realRefTracking.UpdateLocation(); //makes sure these is always up to date and not a frame behind.
+            this.virtualRefTracking.UpdateLocation();
+            for (int i = 0; i < this.heldObjects.Count; i++)
             {
                 heldObjects[i].UpdateInteractable();
             }
@@ -320,31 +320,31 @@ namespace SG
         /// <param name="wristRotation"></param>
         public virtual void GetHandLocation(SG_HandPose handRealPose, out Vector3 wristPosition, out Quaternion wristRotation)
         {
-			//UpdateGrabbedObjects(); //ensure the grabbed objects have their latest position
-			for (int i = 0; i < this.heldObjects.Count; i++)
-			{
-				if (this.heldObjects[i].ControlsHandLocation())
-				{
-					this.heldObjects[i].GetHandLocation(handRealPose, this, out wristPosition, out wristRotation);
-					return;
-				}
-			}
-			wristRotation = handRealPose.wristRotation;
-			wristPosition = handRealPose.wristPosition;
-		}
+            //UpdateGrabbedObjects(); //ensure the grabbed objects have their latest position
+            for (int i = 0; i < this.heldObjects.Count; i++)
+            {
+                if (this.heldObjects[i].ControlsHandLocation())
+                {
+                    this.heldObjects[i].GetHandLocation(handRealPose, this, out wristPosition, out wristRotation);
+                    return;
+                }
+            }
+            wristRotation = handRealPose.wristRotation;
+            wristPosition = handRealPose.wristPosition;
+        }
 
 
 
-		/// <summary> Returns true if this GrabScript is holding- or hovering over something that overrides finger tracking. </summary>
-		/// <returns></returns>
-		public virtual bool ControlsFingerTracking()
-		{
-			for (int i = 0; i < this.heldObjects.Count; i++)
-			{
-				if (this.heldObjects[i].ControlsFingerTracking()) { return true; }
-			}
-			return false;
-		}
+        /// <summary> Returns true if this GrabScript is holding- or hovering over something that overrides finger tracking. </summary>
+        /// <returns></returns>
+        public virtual bool ControlsFingerTracking()
+        {
+            for (int i = 0; i < this.heldObjects.Count; i++)
+            {
+                if (this.heldObjects[i].ControlsFingerTracking()) { return true; }
+            }
+            return false;
+        }
 
         /// <summary> Retrieve the finger tracking overrides from this grabable. You pass the HandDimensions of the 3D model so as to return the proper values. </summary>
         /// <param name="realHandPose"></param>
@@ -352,16 +352,16 @@ namespace SG
         /// <param name="overridePose"></param>
 		public virtual void GetFingerTracking(SG_HandPose realHandPose, SGCore.Kinematics.BasicHandModel handDimensions, out SG_HandPose overridePose)
         {
-			for (int i = 0; i < this.heldObjects.Count; i++)
-			{
-				if (this.heldObjects[i].ControlsHandLocation())
-				{
-					this.heldObjects[i].GetFingerTracking(realHandPose, this, out overridePose);
-					return; //the first object to control the HandLocation
-				}
-			}
-			overridePose = realHandPose;
-		}
+            for (int i = 0; i < this.heldObjects.Count; i++)
+            {
+                if (this.heldObjects[i].ControlsHandLocation())
+                {
+                    this.heldObjects[i].GetFingerTracking(realHandPose, this, out overridePose);
+                    return; //the first object to control the HandLocation
+                }
+            }
+            overridePose = realHandPose;
+        }
 
 
 
@@ -395,7 +395,7 @@ namespace SG
             if (!this.IsGrabbing) //not allowed to highlight while I'm grabbing
             {
                 SG_Interactable[] objs = this.virtualHoverCollider.GetTouchedObjects(this.ProximitySource);
-                for (int i=0; i<objs.Length; i++)
+                for (int i = 0; i < objs.Length; i++)
                 {
                     if (objs[i].GrabAllowed())
                     {
@@ -405,7 +405,7 @@ namespace SG
             }
             return null;
         }
-        
+
         /// <summary> Updates the Hover Logic. This is where we determine OnHover/OnUnHover behaviour. </summary>
         /// <param name="dT"></param>
         public virtual void UpdateHoverLogic(float dT) //why dT? Because I might do something link ; if hovered over for X amount of time.
@@ -424,7 +424,7 @@ namespace SG
                 }
             }
         }
-        
+
 
 
         //-------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -439,7 +439,7 @@ namespace SG
         /// <summary> Returns true if this GrabScript is allowed to grba onto more objects. </summary>
         public bool CanGrabNewObjects
         {
-			get { return GrabEnabled && ( heldObjectLimit < 0 || heldObjects.Count < heldObjectLimit ); }
+            get { return GrabEnabled && (heldObjectLimit < 0 || heldObjects.Count < heldObjectLimit); }
         }
 
 
@@ -458,28 +458,28 @@ namespace SG
         /// <returns></returns>
 		public bool TryGrab(SG_Interactable grabable, bool forceGrab = false)
         {
-			if ( CanGrabNewObjects && grabable.GrabAllowed() )
-			{
-				int index = Util.SG_Util.ListIndex(heldObjects, grabable);
-				if (index < 0 && (forceGrab || !OnCooldown(grabable)) ) //We have not grabbed it yet and it's not on cooldown
-				{
-					// TODO; TryGrab the Object
-					bool grabbed = grabable.TryGrab(this, forceGrab);
-					if (grabbed)
-					{
-						heldObjects.Add(grabable);
+            if (CanGrabNewObjects && grabable.GrabAllowed())
+            {
+                int index = Util.SG_Util.ListIndex(heldObjects, grabable);
+                if (index < 0 && (forceGrab || !OnCooldown(grabable))) //We have not grabbed it yet and it's not on cooldown
+                {
+                    // TODO; TryGrab the Object
+                    bool grabbed = grabable.TryGrab(this, forceGrab);
+                    if (grabbed)
+                    {
+                        heldObjects.Add(grabable);
                         //Debug.Log(this.name + " Grabbed " + grabable.name);
                         this.GrabbedObject.Invoke(grabable, this);
-						UpdateDebugger();
-						return true;
-					}
-					//else
-     //               {
-					//	Debug.Log("Attempted to grab " + grabable.name + " but failed.");
-     //               }
-				}
-			}
-			return false;
+                        UpdateDebugger();
+                        return true;
+                    }
+                    //else
+                    //               {
+                    //	Debug.Log("Attempted to grab " + grabable.name + " but failed.");
+                    //               }
+                }
+            }
+            return false;
         }
 
         /// <summary> Attempt to release an Interactable if it's being held by this GrabScript </summary>
@@ -502,39 +502,39 @@ namespace SG
         /// <returns></returns>
         protected virtual bool ReleaseAt(int heldIndex, bool forceRelease = false)
         {
-			SG_Interactable toRelease = heldObjects[heldIndex];
-			bool canRelease = toRelease.TryRelease(this, forceRelease);
-			if (canRelease || forceRelease) //if we're forcing a release, I don't care if you couldn't do it.
+            SG_Interactable toRelease = heldObjects[heldIndex];
+            bool canRelease = toRelease.TryRelease(this, forceRelease);
+            if (canRelease || forceRelease) //if we're forcing a release, I don't care if you couldn't do it.
             {
-				heldObjects.RemoveAt(heldIndex);
+                heldObjects.RemoveAt(heldIndex);
                 PutOnCooldown(toRelease);
                 //TODO: Fire Event
                 //Debug.Log(this.name + " Released " + removed.name);
-                this.GrabbedObject.Invoke(toRelease, this);
+                this.ReleasedObject.Invoke(toRelease, this); // [수정] ReleasedObject 이벤트를 호출하도록 변경
                 UpdateDebugger();
                 return true;
-			}
-			return false;
-		}
+            }
+            return false;
+        }
 
 
-   
 
-		/// <summary> Attempt to release all objects currently held by this GrabScript. It might immedeately pick if back up, though, if they're still interactable. </summary>
-		/// <param name="forceRelease">If true, they'll be unstuck no matter what the object wants. </param>
-		/// <returns></returns>
-		public bool ReleaseAll(bool forceRelease = true)
+
+        /// <summary> Attempt to release all objects currently held by this GrabScript. It might immedeately pick if back up, though, if they're still interactable. </summary>
+        /// <param name="forceRelease">If true, they'll be unstuck no matter what the object wants. </param>
+        /// <returns></returns>
+        public bool ReleaseAll(bool forceRelease = true)
         {
             int toRelease = this.heldObjects.Count; //all to release
             int released = 0;
             for (int i = 0; i < this.heldObjects.Count;)
             {
-				bool objReleased = ReleaseAt(i, forceRelease);
+                bool objReleased = ReleaseAt(i, forceRelease);
                 if (!objReleased) { i++; } //if we did not remove it from the list, increase the iterator, otherwise we end up in a loop.
                 else { released++; }
             }
-			UpdateDebugger();
-			return released >= toRelease; //return true if everything is released.
+            UpdateDebugger();
+            return released >= toRelease; //return true if everything is released.
         }
 
 
@@ -545,7 +545,7 @@ namespace SG
 
         protected virtual void Start()
         {
-			UpdateDebugger();
+            UpdateDebugger();
         }
 
         protected virtual void FixedUpdate()
@@ -562,11 +562,11 @@ namespace SG
             UpdateCooldowns(Time.deltaTime);
         }
 
-		protected virtual void OnDestroy()
+        protected virtual void OnDestroy()
         {
-			// When we're not quitting
-			// TODO: Remove Grabable's reference to me
-		}
+            // When we're not quitting
+            // TODO: Remove Grabable's reference to me
+        }
 
-	}
+    }
 }

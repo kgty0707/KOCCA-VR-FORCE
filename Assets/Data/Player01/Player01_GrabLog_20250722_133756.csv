@@ -1,0 +1,6 @@
+﻿Timestamp,PlayerName,VisualCondition,LoadCondition,ObjectName,Stiffness,BlockGrabCount,TotalGrabCount
+2025-07-22 13:38:12.657,Player01,,,50,0.5,1,1
+2025-07-22 13:38:17.351,Player01,,,30,0.3,1,2
+2025-07-22 13:38:43.053,Player01,,,30,0.3,2,3
+2025-07-22 13:38:58.282,Player01,,,10,0.1,1,4
+2025-07-22 13:39:10.026,Player01,,,10,0.1,2,5
