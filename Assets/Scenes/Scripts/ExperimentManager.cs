@@ -1,31 +1,23 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq; // OrderBy (셔플) 기능을 사용하기 위해 필요
-using System.IO; // [추가] Path.Combine을 사용하기 위해 필요
+using System.Linq;
+using System.IO;
 
-// --- 데이터 구조 정의 ---
-
-// 실험의 현재 상태를 나타내는 열거형
 public enum ExperimentState { Tutorial, MainBlock, BreakTime, Finished }
 
-// 시각-촉각 조건을 위한 열거형
 public enum ExperimentCondition
 {
-    Base,    // 촉각만 또는 일치 조건
-    Vision,  // 시각적 단서가 있는 조건
-    Confusion // 시각-촉각 불일치 조건
+    Base,
+    Vision,
+    Confusion
 }
 
-// 하나의 실험 블록에 대한 설정을 담는 클래스
 [System.Serializable]
 public class ExperimentBlock
 {
     public ExperimentCondition visualCondition;
 }
-
-
-// --- 메인 컨트롤러 ---
 
 public class ExperimentManager : MonoBehaviour
 {
@@ -62,14 +54,16 @@ public class ExperimentManager : MonoBehaviour
 
     public ConveyorBeltSolid[] conveyorBelts;
 
-    // --- 내부 변수 ---
     private AudioSource audioSource;
     private ExperimentState currentState;
-    private List<ExperimentBlock> experimentSequence; // 셔플된 최종 블록 순서
+    private List<ExperimentBlock> experimentSequence;
     private int currentBlockIndex = 0;
     private bool hasConfirmedTutorial = false;
+    private bool isWaitingForConfidence = false;
+    private int _currentBoxID;
+    private GameObject _currentBall;
+    private string _currentEntryTimestamp;
 
-    // --- 확인 버튼이 호출할 함수 ---
     public void OnTutorialConfirmed()
     {
         hasConfirmedTutorial = true;
@@ -78,22 +72,18 @@ public class ExperimentManager : MonoBehaviour
 
     void Start()
     {
-        // [디버깅] 시작 시점의 주요 컴포넌트 연결 상태를 확인합니다.
         Debug.Log($"[ExperimentManager] Start 시작. DataManager: {(dataManager != null)}, GrabManager: {(grabManager != null)}, RightHandLogger: {(rightHandLogger != null)}");
 
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null) Debug.LogError("AudioSource 컴포넌트를 찾을 수 없습니다!");
 
-        // 1. ExperimentManager가 직접 모든 경로를 생성합니다.
         string rootDataPath = Path.Combine(Application.dataPath, "Data");
         string playerDataPath = Path.Combine(rootDataPath, playerName);
         string handPoseLogPath = Path.Combine(playerDataPath, $"{playerName}_Hand_Pose");
 
-        // 2. 각 폴더가 존재하지 않으면 생성합니다.
         if (!Directory.Exists(playerDataPath)) Directory.CreateDirectory(playerDataPath);
         if (!Directory.Exists(handPoseLogPath)) Directory.CreateDirectory(handPoseLogPath);
 
-        // 3. 생성된 경로를 각 매니저에 전달하며 초기화합니다.
         dataManager.Initialize(playerName, playerDataPath);
 
         if (grabManager != null)
@@ -109,8 +99,6 @@ public class ExperimentManager : MonoBehaviour
         {
             rightHandLogger.Initialize(playerName, handPoseLogPath);
         }
-        // --- 수정 끝 ---
-
 
         PrepareExperimentSequence();
         StartCoroutine(ExperimentFlowRoutine());
@@ -137,7 +125,7 @@ public class ExperimentManager : MonoBehaviour
         // --- 1. 튜토리얼 단계 ---
         currentState = ExperimentState.Tutorial;
 
-        // [수정] 튜토리얼 공을 '생성'하는 대신 '활성화'하고 Fade-in 효과를 시작합니다.
+        // [수정] 튜토리얼 공을 '생성'하는 대신 '활성화'하고 Fade-in 효과
         objectSpawner.ActivateTutorialBalls();
         StartCoroutine(objectSpawner.FadeInTutorialBalls());
 
@@ -147,15 +135,15 @@ public class ExperimentManager : MonoBehaviour
         uiManager.ShowTutorialButtons();
         yield return new WaitUntil(() => hasConfirmedTutorial);
 
-        // [수정] 튜토리얼 공을 '파괴'하는 대신 '비활성화' 합니다.
+        // [수정] 튜토리얼 공을 '파괴'하는 대신 '비활성화'
         objectSpawner.DeactivateTutorialBalls();
-        uiManager.HideAllButtons(); // 튜토리얼 버튼 숨기기
+        uiManager.HideAllButtons();
 
         // --- 2. 메인 실험 블록 반복 ---
-        uiManager.ShowMainGameButtons();
-
         while (currentBlockIndex < experimentSequence.Count)
         {
+            Debug.Log($"[ExperimentFlowRoutine] --- {currentBlockIndex+1}번째 블록 루프 진입 ---");
+
             ExperimentBlock currentBlock = experimentSequence[currentBlockIndex];
             string visualCondStr = currentBlock.visualCondition.ToString();
 
@@ -163,40 +151,61 @@ public class ExperimentManager : MonoBehaviour
 
             currentState = ExperimentState.MainBlock;
 
-            // --- [수정] 모든 데이터 관리자에 현재 블록 정보 전달 ---
             dataManager.SetCurrentBlockInfo(visualCondStr);
+            dataManager.SetBlockNumberInfo(currentBlockIndex + 1, experimentSequence.Count); // <-- 추가
+
             if (grabManager != null)
             {
                 grabManager.SetCurrentBlockInfo(visualCondStr);
             }
+
             if (rightHandLogger != null)
             {
-                rightHandLogger.SetCurrentBlockInfo(visualCondStr);
+                try
+                {
+                    rightHandLogger.SetBlockNumberInfo(currentBlockIndex + 1, experimentSequence.Count);
+                    rightHandLogger.SetCurrentBlockInfo(visualCondStr);
+                    rightHandLogger.StartLogging();
+                    Debug.Log("손 데이터 기록을 시작합니다.");
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"!!!!!!!! HandPoseLogger에서 예외 발생 !!!!!!!!");
+                    Debug.LogError(e.ToString()); 
+                }
             }
 
             uiManager.ShowInstruction($"{currentBlockIndex + 1} / {experimentSequence.Count} 번째 블록을 시작합니다.");
             if (blockStartClip != null) audioSource.PlayOneShot(blockStartClip);
 
-            yield return new WaitForSeconds(3);
             uiManager.HideInstruction();
-            uiManager.ShowMainGameButtons();
 
-            // --- Spawner에 블록 시작을 알립니다 ---
+            // ★ 블록 시작 전에 ObjectSpawner의 blocked 상태를 명시적으로 해제
+            objectSpawner.SetBlockedStatus(false);
             objectSpawner.StartSpawningForBlock(currentBlock.visualCondition, ballsPerBlock);
 
-            // Spawner가 모든 공 생성을 마칠 때까지 대기
-            yield return new WaitUntil(() => objectSpawner.IsBlockFinished());
-            yield return new WaitForSeconds(2); // 마지막 공이 처리될 시간 확보
+            yield return new WaitUntil(() => objectSpawner.IsAllBallsEntered());
 
-            // --- 추가: 블록 종료 시 GrabManager의 카운트 초기화 ---
+            yield return new WaitUntil(() => !isWaitingForConfidence);
+
+            yield return new WaitForSeconds(0.5f);
+
+            objectSpawner.ClearAllSpawnedObjects();
+
             if (grabManager != null)
             {
                 grabManager.ResetBlockCounts();
             }
 
-            objectSpawner.ClearAllSpawnedObjects();
 
-            // --- 3. 블록 간 휴식 ---
+            if (rightHandLogger != null)
+            {
+                rightHandLogger.StopLogging();
+                Debug.Log("손 데이터가 저장됩니다.");
+            }
+
+            dataManager.ExportToCSV();
+
             currentBlockIndex++;
             if (currentBlockIndex < experimentSequence.Count)
             {
@@ -207,6 +216,7 @@ public class ExperimentManager : MonoBehaviour
                 yield return new WaitForSeconds(breakTimeDuration);
             }
         }
+        SetAllBeltsMoving(false, 0);
 
         // --- 4. 실험 종료 ---
         currentState = ExperimentState.Finished;
@@ -217,7 +227,38 @@ public class ExperimentManager : MonoBehaviour
         Debug.Log("모든 실험이 종료되었습니다. 데이터가 곧 저장됩니다.");
     }
 
-    // DetectionZone이 호출하여 시스템 전체를 멈추거나 재개하는 함수
+    public void BallEnteredBox(int boxID, GameObject ball)
+    {
+        if (currentState != ExperimentState.MainBlock) return;
+
+        _currentBoxID = boxID;
+        _currentBall = ball;
+        _currentEntryTimestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+
+        isWaitingForConfidence = true;
+
+        uiManager.ShowConfidencePanel();
+    }
+
+    public void OnConfidenceSelected(int confidence)
+    {
+        if (_currentBall == null) 
+        {
+            Debug.Log("_currentBall이 null입니다!");
+            return;
+        }
+
+        uiManager.HideConfidencePanel();
+
+        dataManager.RecordBallEntry(_currentBoxID, _currentBall, _currentEntryTimestamp, confidence);
+
+        _currentBall = null;
+
+        isWaitingForConfidence = false;
+
+        SetSystemBlocked(false);
+    }
+
     public void SetSystemBlocked(bool isBlocked)
     {
         if (currentState == ExperimentState.MainBlock)

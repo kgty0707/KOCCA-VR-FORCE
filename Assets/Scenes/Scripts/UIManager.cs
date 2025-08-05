@@ -11,52 +11,31 @@ public class UIManager : MonoBehaviour
 
     // --- [추가] 버튼 패널 연결 ---
     [Header("버튼 패널 연결")]
-    [Tooltip("1, 2, 3번 버튼들의 부모 오브젝트")]
-    public GameObject numberButtonsPanel;
     [Tooltip("튜토리얼용 확인 버튼 오브젝트")]
     public GameObject confirmButton;
+    [Tooltip("자신감 수준을 선택하는 UI 패널")]
+    public GameObject confidencePanel;
 
     void Start()
     {
-        // 시작 시 모든 UI를 숨김
-        if (instructionPanel != null)
+        if (instructionPanel != null || confidencePanel != null)
         {
             instructionPanel.SetActive(false);
+            confidencePanel.SetActive(false);
         }
-        // --- [추가] ---
         HideAllButtons();
     }
 
-    // --- [추가] 버튼 제어 메서드들 ---
-
-    /// <summary>
-    /// 튜토리얼 상태에 맞는 버튼들(확인 버튼)만 표시합니다.
-    /// </summary>
     public void ShowTutorialButtons()
     {
-        if (numberButtonsPanel != null) numberButtonsPanel.SetActive(false);
         if (confirmButton != null) confirmButton.SetActive(true);
     }
 
-    /// <summary>
-    /// 메인 게임 상태에 맞는 버튼들(숫자 버튼)만 표시합니다.
-    /// </summary>
-    public void ShowMainGameButtons()
-    {
-        if (numberButtonsPanel != null) numberButtonsPanel.SetActive(true);
-        if (confirmButton != null) confirmButton.SetActive(false);
-    }
-
-    /// <summary>
-    /// 모든 인터랙션 버튼을 숨깁니다.
-    /// </summary>
     public void HideAllButtons()
     {
-        if (numberButtonsPanel != null) numberButtonsPanel.SetActive(false);
         if (confirmButton != null) confirmButton.SetActive(false);
     }
 
-    // 튜토리얼 전용 UI 표시 함수
     public void ShowTutorialScreen(string message)
     {
         if (instructionPanel == null) return;
@@ -103,5 +82,28 @@ public class UIManager : MonoBehaviour
         if (instructionPanel == null) return;
         instructionPanel.SetActive(true);
         instructionText.text = "실험이 모두 종료되었습니다.\n수고하셨습니다.";
+    }
+
+    public void ShowConfidencePanel()
+    {
+        if (confidencePanel != null)
+        {
+            confidencePanel.SetActive(true);
+        }
+    }
+
+    public void HideConfidencePanel()
+    {
+        StartCoroutine(HidePanelAfterDelay(0.2f)); 
+    }
+
+    private IEnumerator HidePanelAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        if (confidencePanel != null)
+        {
+            confidencePanel.SetActive(false);
+        }
     }
 }

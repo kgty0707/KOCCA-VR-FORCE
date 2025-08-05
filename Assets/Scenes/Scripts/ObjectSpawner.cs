@@ -1,7 +1,9 @@
 using UnityEngine;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using SG; // SenseGlove 네임스페이스
 
 [System.Serializable]
 public class ConditionBallSet
@@ -19,195 +21,236 @@ public class ObjectSpawner : MonoBehaviour
     public Transform spawnPoint;
     public float minimumSpacing = 1.5f;
 
-    // --- [수정된 부분 1] ---
-    // 프리팹 배열 대신 씬에 있는 오브젝트를 직접 연결합니다.
     [Header("튜토리얼 공 설정")]
-    [Tooltip("씬에 미리 배치된 튜토리얼 공 오브젝트들을 여기에 연결하세요.")]
-    public GameObject[] tutorialBallObjects; // 기존 standardBallPrefabs 대신 사용
-
+    public GameObject[] tutorialBallObjects;
     public Transform tutorialSpawnPoint;
 
-    // --- 내부 변수 ---
+    // --- 외부 참조 변수 ---
+    public int enteredBallCount { get; private set; }
+    public int totalBallsToEnter { get; private set; }
+
+    // --- 내부 관리 변수 ---
+    private List<GameObject> spawnQueue = new List<GameObject>();
+    private List<float> forceQueue = new List<float>();
+    private int spawnIndex = 0;
+    private Coroutine spawnRoutine;
     private bool isBlocked = false;
     private GameObject lastSpawnedObject;
-    private List<GameObject> spawnQueue = new List<GameObject>();
-    private int spawnIndex = 0;
-
-    // [추가] 블록 내에서 생성된 공의 순서를 기록할 카운터
-    private int ballSpawnCounter = 0;
-
-    // 이 리스트는 이제 씬에 있는 공들의 참조를 임시로 담는 역할을 합니다.
-    private List<GameObject> activeTutorialBalls = new List<GameObject>();
     private List<GameObject> mainBlockSpawnedBalls = new List<GameObject>();
 
-
-    // --- [수정된 부분 2] ---
-    // 튜토리얼 공을 '생성'하는 대신 '활성화하고 보여주는' 함수
-    public void ActivateTutorialBalls()
+    void Start()
     {
-        activeTutorialBalls.Clear(); // 리스트를 먼저 비웁니다.
-        foreach (var ball in tutorialBallObjects)
-        {
-            if (ball != null)
-            {
-                ball.SetActive(true);  // 오브젝트를 활성화합니다.
-                SetAlpha(ball, 0);     // 투명하게 만들어 Fade-in을 준비합니다.
-                activeTutorialBalls.Add(ball); // 관리 리스트에 추가합니다.
-            }
-        }
+        // 특별한 초기화가 필요 없으므로 비워둡니다.
     }
 
-    // Fade-in 기능은 그대로 사용합니다. 대상이 activeTutorialBalls 리스트입니다.
-    public IEnumerator FadeInTutorialBalls()
-    {
-        float duration = 1.5f;
-        float elapsedTime = 0f;
-        while (elapsedTime < duration)
-        {
-            float alpha = Mathf.Lerp(0, 1, elapsedTime / duration);
-            foreach (var ball in activeTutorialBalls)
-            {
-                SetAlpha(ball, alpha);
-            }
-            elapsedTime += Time.deltaTime;
-            yield return null;
-        }
-    }
+    // =====================================================================================
+    // [공용 함수] ExperimentManager, BoxEntryDetector 등 외부 스크립트에서 호출하는 함수들
+    // =====================================================================================
 
-    // --- [수정된 부분 3] ---
-    // 튜토리얼 공을 '파괴'하는 대신 '비활성화'하는 함수
-    public void DeactivateTutorialBalls()
-    {
-        foreach (var ball in activeTutorialBalls)
-        {
-            if (ball != null)
-            {
-                ball.SetActive(false); // 오브젝트를 파괴하는 대신 비활성화합니다.
-            }
-        }
-        activeTutorialBalls.Clear(); // 관리 리스트를 비웁니다.
-    }
-
-
-    private void SetAlpha(GameObject obj, float alpha)
-    {
-        Renderer renderer = obj.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            // 모든 머티리얼의 색상을 변경하도록 수정 (투명 쉐이더 사용 시)
-            foreach (var mat in renderer.materials)
-            {
-                Color newColor = mat.color;
-                newColor.a = alpha;
-                mat.color = newColor;
-            }
-        }
-    }
-
-    // --- 메인 블록 관련 함수들 ---
+    /// <summary>
+    /// 새로운 블록의 공 생성을 시작합니다.
+    /// </summary>
     public void StartSpawningForBlock(ExperimentCondition condition, int requiredBallCount)
     {
-        // [추가] 새로운 블록이 시작될 때 스폰 카운터를 초기화합니다.
-        ballSpawnCounter = 0;
+        this.totalBallsToEnter = requiredBallCount;
+        this.enteredBallCount = 0;
+        spawnQueue.Clear();
+        forceQueue.Clear();
+        spawnIndex = 0;
 
-        string conditionName = condition.ToString();
-        ConditionBallSet currentSet = conditionSets.Find(set => set.conditionName == conditionName);
-        if (currentSet != null && currentSet.ballPrefabs.Length > 0)
+        ConditionBallSet currentSet = conditionSets.FirstOrDefault(cs => cs.conditionName == condition.ToString());
+        if (currentSet == null || currentSet.ballPrefabs.Length == 0)
         {
-            int totalSpawnCount = requiredBallCount + 3;
-            PrepareSpawnQueue(currentSet.ballPrefabs, totalSpawnCount, requiredBallCount);
-            StartCoroutine(SpawnObjectRoutine());
+            Debug.LogError($"'{condition}' 조건에 대한 공 프리팹이 설정되지 않았습니다!");
+            return;
         }
-        else
+
+        // 규칙 1: 균등 분배 목록 생성
+        var basePrefabs = new List<GameObject>();
+        int numBallTypes = currentSet.ballPrefabs.Length;
+        int countPerBall = requiredBallCount / numBallTypes;
+        int remainder = requiredBallCount % numBallTypes;
+
+        foreach (var prefab in currentSet.ballPrefabs)
         {
-            Debug.LogError($"'{conditionName}' 조건을 찾을 수 없거나 프리팹이 없습니다!");
+            for (int i = 0; i < countPerBall; i++) basePrefabs.Add(prefab);
+        }
+        var shuffledPrefabsForRemainder = currentSet.ballPrefabs.OrderBy(x => Guid.NewGuid()).ToList();
+        for (int i = 0; i < remainder; i++)
+        {
+            basePrefabs.Add(shuffledPrefabsForRemainder[i]);
+        }
+        
+        spawnQueue = basePrefabs.OrderBy(x => Guid.NewGuid()).ToList();
+
+        // 규칙 2: Confusion 조건일 경우, 추가 규칙 적용
+        if (condition == ExperimentCondition.Confusion)
+        {
+            PrepareConfusionForces(spawnQueue);
+        }
+
+        if (spawnRoutine != null) StopCoroutine(spawnRoutine);
+        spawnRoutine = StartCoroutine(SpawnRoutine());
+    }
+    
+    /// <summary>
+    /// 모든 공이 상자에 들어갔는지 확인합니다.
+    /// </summary>
+    public bool IsAllBallsEntered()
+    {
+        return enteredBallCount >= totalBallsToEnter;
+    }
+
+    /// <summary>
+    /// BoxEntryDetector가 호출하여 공이 상자에 들어왔음을 알립니다.
+    /// </summary>
+    public void NotifyBallEnteredBox()
+    {
+        enteredBallCount++;
+    }
+
+    /// <summary>
+    /// 튜토리얼 공들을 활성화합니다.
+    /// </summary>
+    public void ActivateTutorialBalls()
+    {
+        foreach (var ball in tutorialBallObjects)
+        {
+            if (ball != null) ball.SetActive(true);
+        }
+    }
+    
+    /// <summary>
+    /// 튜토리얼 공들을 비활성화합니다.
+    /// </summary>
+    public void DeactivateTutorialBalls()
+    {
+        foreach (var ball in tutorialBallObjects)
+        {
+            if (ball != null) ball.SetActive(false);
         }
     }
 
-    void PrepareSpawnQueue(GameObject[] prefabs, int totalSpawnCount, int requiredBallCount)
+    /// <summary>
+    /// 튜토리얼 공들이 서서히 나타나는 효과 (코루틴)
+    /// </summary>
+    public IEnumerator FadeInTutorialBalls()
     {
-        spawnQueue.Clear();
-        spawnIndex = 0;
-        if (requiredBallCount % prefabs.Length != 0)
+        Debug.Log("튜토리얼 공 페이드 인 시작");
+        yield return new WaitForSeconds(1f); // 임시 대기, 필요시 로직 구현
+    }
+    
+    /// <summary>
+    /// 현재 블록에서 생성된 모든 공을 제거합니다.
+    /// </summary>
+    public void ClearAllSpawnedObjects()
+    {
+        foreach (var ball in mainBlockSpawnedBalls)
         {
-            Debug.LogWarning("경고: 목표 생성 개수가 공 종류의 배수가 아닙니다.");
+            if (ball != null) Destroy(ball);
         }
-        int countPerPrefab = requiredBallCount / prefabs.Length;
-        foreach (GameObject prefab in prefabs)
+        mainBlockSpawnedBalls.Clear();
+    }
+    
+    /// <summary>
+    /// 공 생성이 잠시 막혔는지 상태를 설정합니다.
+    /// </summary>
+    public void SetBlockedStatus(bool blocked)
+    {
+        isBlocked = blocked;
+    }
+
+    // ======================================================================
+    // [수정된 핵심 로직] 내부 로직 함수들
+    // ======================================================================
+
+    /// <summary>
+    /// Confusion 조건의 Stiffness 목록을 준비하고, 원래 값과 겹치지 않도록 보정합니다.
+    /// </summary>
+    private void PrepareConfusionForces(List<GameObject> currentSpawnQueue)
+    {
+        var originalForces = currentSpawnQueue.Select(p => p.GetComponent<SG_Material>().materialProperties.maxForce).ToList();
+        
+        int attempts = 0;
+        while (attempts < 100) // 무한 루프 방지 장치
         {
-            for (int i = 0; i < countPerPrefab; i++)
+            forceQueue = originalForces.OrderBy(x => Guid.NewGuid()).ToList();
+
+            if (!HasMatches(currentSpawnQueue, forceQueue))
             {
-                spawnQueue.Add(prefab);
+                Debug.Log($"Confusion 조건의 완벽한 교란 순열 생성 성공! (시도 횟수: {attempts + 1})");
+                return; 
+            }
+            attempts++;
+        }
+        Debug.LogError("100번 이상 시도했지만 완벽한 교란 순열을 만들지 못했습니다. 공의 종류나 개수에 문제가 있을 수 있습니다.");
+    }
+    
+    /// <summary>
+    /// 두 목록 사이에 같은 위치에 같은 값이 있는지 검사하는 헬퍼 함수
+    /// </summary>
+    private bool HasMatches(List<GameObject> spawnQueue, List<float> forceQueue)
+    {
+        for (int i = 0; i < spawnQueue.Count; i++)
+        {
+            float originalForce = spawnQueue[i].GetComponent<SG_Material>().materialProperties.maxForce;
+            if (Mathf.Approximately(originalForce, forceQueue[i]))
+            {
+                return true; // 하나라도 겹치면 true 반환
             }
         }
-        for (int i = 0; i < totalSpawnCount - requiredBallCount; i++)
-        {
-            spawnQueue.Add(prefabs[Random.Range(0, prefabs.Length)]);
-        }
-        var random = new System.Random();
-        spawnQueue = spawnQueue.OrderBy(x => random.Next()).ToList();
+        return false; // 모두 다르면 false 반환
     }
 
-    public void SetBlockedStatus(bool status)
-    {
-        isBlocked = status;
-    }
-
-    private IEnumerator SpawnObjectRoutine()
+    /// <summary>
+    /// 설정된 큐에 따라 공을 생성하는 코루틴
+    /// </summary>
+    private IEnumerator SpawnRoutine()
     {
         while (spawnIndex < spawnQueue.Count)
         {
-            while (isBlocked || !IsSpaceAvailable())
-            {
-                yield return null;
-            }
+            yield return new WaitUntil(() => !isBlocked);
 
-            GameObject newBall = Instantiate(spawnQueue[spawnIndex], spawnPoint.position, spawnPoint.rotation);
-
-            // --- [수정] 생성된 공에 고유 이름 부여 ---
-            ballSpawnCounter++; // 카운터 증가
-            string originalName = spawnQueue[spawnIndex].name; // 원본 프리팹 이름 (예: "BallA")
-            newBall.name = $"{originalName}-{ballSpawnCounter}"; // 새 이름 할당 (예: "BallA-1")
-            Debug.Log($"공 생성: {newBall.name}");
-            // --- 수정 끝 ---
-
-            lastSpawnedObject = newBall;
+            GameObject prefabToSpawn = spawnQueue[spawnIndex];
+            GameObject newBall = Instantiate(prefabToSpawn, spawnPoint.position, spawnPoint.rotation);
+            newBall.name = $"{prefabToSpawn.name}_{spawnIndex + 1}"; // 로그 기록을 위한 이름 부여
             mainBlockSpawnedBalls.Add(newBall);
 
-            spawnIndex++;
-            yield return new WaitForSeconds(0.1f);
-        }
-        Debug.Log("현재 블록의 모든 공 생성이 완료되었습니다.");
-    }
-
-    public bool IsBlockFinished()
-    {
-        return spawnIndex >= spawnQueue.Count;
-    }
-
-    private bool IsSpaceAvailable()
-    {
-        if (lastSpawnedObject == null) return true;
-        float distance = Vector3.Distance(lastSpawnedObject.transform.position, spawnPoint.position);
-        return distance > minimumSpacing;
-    }
-
-    // [추가] 메인 블록에서 생성된 모든 공을 삭제하는 함수
-    public void ClearAllSpawnedObjects()
-    {
-        // 리스트에 있는 모든 게임오브젝트를 파괴
-        foreach (GameObject ball in mainBlockSpawnedBalls)
-        {
-            // 오브젝트가 이미 다른 이유로 파괴되었을 경우를 대비해 null 체크
-            if (ball != null)
+            // Confusion 조건일 경우에만 값을 덮어씁니다.
+            if (forceQueue.Count > 0)
             {
-                Destroy(ball);
+                var material = newBall.GetComponent<SG_Material>();
+                if (material != null && material.materialProperties != null)
+                {
+                    // [최종 핵심 수정] 원본 Material 애셋이 영구적으로 변경되는 것을 방지합니다.
+                    // 1. 원본 Material Properties 애셋을 복제(Instantiate)하여 메모리에 새로운 인스턴스를 만듭니다.
+                    material.materialProperties = Instantiate(material.materialProperties);
+                    
+                    // 2. 이제 복제된 인스턴스의 maxForce 값을 변경합니다.
+                    material.materialProperties.maxForce = forceQueue[spawnIndex];
+                }
             }
+            
+            lastSpawnedObject = newBall;
+            spawnIndex++;
+            yield return new WaitForSeconds(minimumSpacing);
         }
+    }
 
-        // 리스트를 비워서 다음 블록을 준비
-        mainBlockSpawnedBalls.Clear();
+    // --- Unity 메시지 함수 ---
+    void OnTriggerEnter(Collider other)
+    {
+        if (other.gameObject == lastSpawnedObject)
+        {
+            isBlocked = true;
+        }
+    }
 
-        Debug.Log("메인 블록에서 생성된 모든 공이 삭제되었습니다.");
+    void OnTriggerExit(Collider other)
+    {
+        if (other.gameObject == lastSpawnedObject)
+        {
+            isBlocked = false;
+        }
     }
 }

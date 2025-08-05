@@ -6,7 +6,6 @@ public class DetectionZone : MonoBehaviour
 
     void Start()
     {
-        // 씬에서 ExperimentManager를 자동으로 찾아 연결
         experimentManager = FindObjectOfType<ExperimentManager>();
         if (experimentManager == null)
         {
@@ -19,14 +18,6 @@ public class DetectionZone : MonoBehaviour
         if (other.CompareTag("Ball") && experimentManager != null)
         {
             experimentManager.SetSystemBlocked(true);
-        }
-    }
-
-    private void OnTriggerExit(Collider other)
-    {
-        if (other.CompareTag("Ball") && experimentManager != null)
-        {
-            experimentManager.SetSystemBlocked(false);
         }
     }
 }
