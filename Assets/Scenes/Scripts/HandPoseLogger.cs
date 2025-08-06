@@ -9,14 +9,15 @@ public class HandPoseLogger : MonoBehaviour
     [Header("필수 연결 요소")]
     public SG_TrackedHand trackedHand;
 
-    [Header("파일 설정")]
-    public string filePrefix = "HandPoseLog_";
+    // 이 변수들은 이제 DataManager가 경로를 생성하므로 사용되지 않습니다.
+    // [Header("파일 설정")]
+    // public string filePrefix = "HandPoseLog_";
 
     private bool isLogging = false;
-    private float logStartTime;
-    private StringBuilder csvData;
+    // private float logStartTime; // 사용되지 않으므로 주석 처리
+    // private StringBuilder csvData; // 사용되지 않으므로 주석 처리
     private string participantName = "UnknownPlayer";
-    private string handPoseLogPath;
+    // private string handPoseLogPath; // DataManager로부터 경로를 받으므로 불필요
     private StringBuilder realCsvData;
     private StringBuilder virtualCsvData;
     private int currentBlockNumber = 1;
@@ -45,23 +46,21 @@ public class HandPoseLogger : MonoBehaviour
             Debug.Log($"[HandPoseLogger] {gameObject.name}의 'Tracked Hand' 연결 확인 완료: {trackedHand.name}");
         }
     }
+    
+    // Initialize 함수에서 경로 설정 부분을 제거하거나 비워둡니다.
     public void Initialize(string name, string logFolderPath)
     {
-        Debug.Log($"[HandPoseLogger] Initialize 함수 호출됨. Player: {name}, Path: {logFolderPath}");
-
+        Debug.Log($"[HandPoseLogger] Initialize 함수 호출됨. Player: {name}");
         this.participantName = name;
-        this.handPoseLogPath = logFolderPath;
-        if (string.IsNullOrEmpty(this.handPoseLogPath))
-        {
-            Debug.LogError("[HandPoseLogger ERROR] Initialize를 통해 전달받은 폴더 경로(logFolderPath)가 비어있습니다!");
-        }
+        // this.handPoseLogPath = logFolderPath; // 더 이상 이 스크립트에서 경로를 관리하지 않음
     }
+    
     public void SetCurrentBlockInfo(string visual)
     {
         Debug.Log($"[HandPoseLogger] SetCurrentBlockInfo 호출됨. 현재 조건: {visual}");
-
         this.currentVisualCondition = visual;
     }
+    
     void Start()
     {
         if (trackedHand == null)
@@ -82,7 +81,7 @@ public class HandPoseLogger : MonoBehaviour
             return;
         }
         isLogging = true;
-        logStartTime = Time.time;
+        // logStartTime = Time.time; // 사용되지 않으므로 주석 처리
 
         realCsvData = new StringBuilder();
         virtualCsvData = new StringBuilder();
@@ -101,15 +100,14 @@ public class HandPoseLogger : MonoBehaviour
         if (!isLogging) return;
         isLogging = false;
 
-        if (csvData != null && csvData.Length < 200)
-        {
-            LogCurrentFrameData();
-            Debug.Log("[HandPoseLogger] StopLogging에서 최소 한 프레임 강제 기록");
-        }
-
-        Debug.Log($"로깅 중지: 파일 저장 중...");
-        SaveLogToFile();
+        // 마지막 프레임 데이터가 누락되지 않도록 로깅 중지 시 한 번 더 기록
+        LogCurrentFrameData(); 
+        Debug.Log("[HandPoseLogger] 로깅 루프 중지됨.");
+        
+        // 파일 저장은 DataManager가 외부에서 SaveLogToFile(path)를 호출하여 수행
+        // SaveLogToFile(); // 여기서 직접 호출하지 않음
     }
+    
     void Update()
     {
         if (isLogging)
@@ -117,6 +115,7 @@ public class HandPoseLogger : MonoBehaviour
             LogCurrentFrameData();
         }
     }
+    
     private void LogCurrentFrameData()
     {
         string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
@@ -144,16 +143,10 @@ public class HandPoseLogger : MonoBehaviour
         }
     }
 
-    private void SaveLogToFile()
+    public void SaveLogToFile(string sessionFolderPath)
     {
-        string timeStampForFile = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        string sessionFolderName = $"Block_{currentBlockNumber:D2}_of_{totalBlocks}_{participantName}_{currentVisualCondition}_{timeStampForFile}";
-        string sessionFolderPath = Path.Combine(handPoseLogPath, sessionFolderName);
 
-        if (!Directory.Exists(sessionFolderPath))
-            Directory.CreateDirectory(sessionFolderPath);
-
-        if (realCsvData != null && realCsvData.Length > 0)
+        if (realCsvData != null && realCsvData.Length > realCsvData.ToString().Split('\n')[0].Length + 5) // 헤더만 있는지 체크
         {
             string realFilePath = Path.Combine(sessionFolderPath, "Real.csv");
             try
@@ -166,8 +159,13 @@ public class HandPoseLogger : MonoBehaviour
                 Debug.LogError($"오류: [Real] 파일 저장에 실패했습니다. \n{e.Message}");
             }
         }
+        else
+        {
+            Debug.LogWarning("[Real] 손 추적 데이터가 없어 파일을 저장하지 않습니다.");
+        }
 
-        if (virtualCsvData != null && virtualCsvData.Length > 0)
+
+        if (virtualCsvData != null && virtualCsvData.Length > virtualCsvData.ToString().Split('\n')[0].Length + 5) // 헤더만 있는지 체크
         {
             string virtualFilePath = Path.Combine(sessionFolderPath, "Virtual.csv");
             try
@@ -180,5 +178,12 @@ public class HandPoseLogger : MonoBehaviour
                 Debug.LogError($"오류: [Virtual] 파일 저장에 실패했습니다. \n{e.Message}");
             }
         }
+        else
+        {
+             Debug.LogWarning("[Virtual] 손 추적 데이터가 없어 파일을 저장하지 않습니다.");
+        }
+        
+        realCsvData?.Clear();
+        virtualCsvData?.Clear();
     }
 }

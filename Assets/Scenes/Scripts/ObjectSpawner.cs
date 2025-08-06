@@ -37,6 +37,22 @@ public class ObjectSpawner : MonoBehaviour
     private bool isBlocked = false;
     private GameObject lastSpawnedObject;
     private List<GameObject> mainBlockSpawnedBalls = new List<GameObject>();
+    private HashSet<GameObject> enteredBalls = new HashSet<GameObject>();
+
+    public void NotifyBallEnteredBox(GameObject ball = null)
+    {
+        // 중복 진입 방지
+        if (ball != null && enteredBalls.Contains(ball))
+        {
+            Debug.LogWarning($"[ObjectSpawner] 이미 카운트된 공입니다: {ball.name}");
+            return;
+        }
+        
+        if (ball != null) enteredBalls.Add(ball);
+        
+        enteredBallCount++;
+        Debug.Log($"[ObjectSpawner] 공이 상자에 들어옴. 현재 카운트: {enteredBallCount} / {totalBallsToEnter}");
+    }
 
     void Start()
     {
@@ -52,11 +68,16 @@ public class ObjectSpawner : MonoBehaviour
     /// </summary>
     public void StartSpawningForBlock(ExperimentCondition condition, int requiredBallCount)
     {
+        Debug.Log($"[ObjectSpawner] 새로운 블록 시작 요청. requiredBallCount = {requiredBallCount}");
+
         this.totalBallsToEnter = requiredBallCount;
         this.enteredBallCount = 0;
         spawnQueue.Clear();
         forceQueue.Clear();
         spawnIndex = 0;
+
+        Debug.Log($"[ObjectSpawner] totalBallsToEnter 변수를 '{this.totalBallsToEnter}'로 설정했습니다.");
+
 
         ConditionBallSet currentSet = conditionSets.FirstOrDefault(cs => cs.conditionName == condition.ToString());
         if (currentSet == null || currentSet.ballPrefabs.Length == 0)
@@ -82,6 +103,8 @@ public class ObjectSpawner : MonoBehaviour
         }
         
         spawnQueue = basePrefabs.OrderBy(x => Guid.NewGuid()).ToList();
+        Debug.Log($"[ObjectSpawner] 생성 큐에 {spawnQueue.Count}개의 공을 준비했습니다.");
+
 
         // 규칙 2: Confusion 조건일 경우, 추가 규칙 적용
         if (condition == ExperimentCondition.Confusion)
@@ -108,7 +131,6 @@ public class ObjectSpawner : MonoBehaviour
     {
         enteredBallCount++;
     }
-
     /// <summary>
     /// 튜토리얼 공들을 활성화합니다.
     /// </summary>
@@ -150,6 +172,7 @@ public class ObjectSpawner : MonoBehaviour
             if (ball != null) Destroy(ball);
         }
         mainBlockSpawnedBalls.Clear();
+        enteredBalls.Clear(); // 추가
     }
     
     /// <summary>

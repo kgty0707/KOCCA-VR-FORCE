@@ -1,6 +1,0 @@
-﻿Timestamp,ParticipantName,VisualCondition,BoxID,BallName,Stiffness,BlockGrabCount,TotalGrabCount,FirstGrabTimestamp,LastGrabTimestamp,Confidence
-2025-08-05 02:14:41.170,Player01,Vision,3,"BouncyBall_1",0.3,2,7,2025-08-05 02:14:30.833,2025-08-05 02:14:35.329,5
-2025-08-05 02:14:45.237,Player01,Vision,2,"SpongeBall_2",0.1,1,8,2025-08-05 02:14:43.815,2025-08-05 02:14:43.815,5
-2025-08-05 02:14:50.247,Player01,Vision,4,"BaseBall_3",0.5,1,9,2025-08-05 02:14:47.783,2025-08-05 02:14:47.783,5
-2025-08-05 02:14:54.540,Player01,Vision,1,"FeltBall_4",0,1,10,2025-08-05 02:14:52.621,2025-08-05 02:14:52.621,5
-2025-08-05 02:15:49.220,Player01,Vision,1,"StealBall_5",1,1,11,2025-08-05 02:14:57.298,2025-08-05 02:14:57.298,5

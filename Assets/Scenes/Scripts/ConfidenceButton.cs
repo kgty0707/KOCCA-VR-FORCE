@@ -33,10 +33,7 @@ public class ConfidenceButton : MonoBehaviour
             if (touchSound != null)
             {
                 AudioSource.PlayClipAtPoint(touchSound, transform.position);
-            }
-            
-            Debug.Log($"확신도 {confidenceValue}번 버튼이 터치되었습니다!");
-            
+            }            
             onTouch.Invoke(confidenceValue);
         }
     }

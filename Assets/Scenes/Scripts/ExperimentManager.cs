@@ -4,7 +4,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.IO;
 
-public enum ExperimentState { Tutorial, MainBlock, BreakTime, Finished }
+public enum ExperimentState { 
+    Exploration,
+    RealTutorial,
+    MainBlock, 
+    BreakTime, 
+    Finished 
+}
 
 public enum ExperimentCondition
 {
@@ -51,9 +57,8 @@ public class ExperimentManager : MonoBehaviour
     public GrabManager grabManager;
     [Tooltip("씬에 있는 DataManager를 연결하세요.")]
     public DataManager dataManager;
-
     public ConveyorBeltSolid[] conveyorBelts;
-
+    private bool isProcessingConfidence = false;
     private AudioSource audioSource;
     private ExperimentState currentState;
     private List<ExperimentBlock> experimentSequence;
@@ -78,16 +83,12 @@ public class ExperimentManager : MonoBehaviour
         if (audioSource == null) Debug.LogError("AudioSource 컴포넌트를 찾을 수 없습니다!");
 
         string rootDataPath = Path.Combine(Application.dataPath, "Data");
-        string playerDataPath = Path.Combine(rootDataPath, playerName);
-        string handPoseLogPath = Path.Combine(playerDataPath, $"{playerName}_Hand_Pose");
-
-        if (!Directory.Exists(playerDataPath)) Directory.CreateDirectory(playerDataPath);
-        if (!Directory.Exists(handPoseLogPath)) Directory.CreateDirectory(handPoseLogPath);
-
-        dataManager.Initialize(playerName, playerDataPath);
+        dataManager.Initialize(playerName, rootDataPath);
 
         if (grabManager != null)
         {
+            string playerDataPath = Path.Combine(rootDataPath, playerName);
+            if (!Directory.Exists(playerDataPath)) Directory.CreateDirectory(playerDataPath);
             grabManager.Initialize(playerName, playerDataPath);
         }
         else
@@ -97,7 +98,7 @@ public class ExperimentManager : MonoBehaviour
 
         if (rightHandLogger != null)
         {
-            rightHandLogger.Initialize(playerName, handPoseLogPath);
+            rightHandLogger.Initialize(playerName, rootDataPath);
         }
 
         PrepareExperimentSequence();
@@ -119,27 +120,51 @@ public class ExperimentManager : MonoBehaviour
 
     private IEnumerator ExperimentFlowRoutine()
     {
-        // 실험 시작 시 컨베이어 벨트를 우선 정지 상태로 설정
         SetAllBeltsMoving(false, 0);
 
-        // --- 1. 튜토리얼 단계 ---
-        currentState = ExperimentState.Tutorial;
-
-        // [수정] 튜토리얼 공을 '생성'하는 대신 '활성화'하고 Fade-in 효과
-        objectSpawner.ActivateTutorialBalls();
+        // --- 1. 탐구 세션 ---
+        currentState = ExperimentState.Exploration;
+        objectSpawner.ActivateTutorialBalls(); 
         StartCoroutine(objectSpawner.FadeInTutorialBalls());
 
-        uiManager.ShowInstruction("앞에 놓인 5개의 공은 각각 단단한 정도가 다릅니다.\n각 공의 강성 차이를 충분히 익힌 후,\n준비가 되면 오른쪽 '확인' 버튼을 눌러주세요.");
+        uiManager.ShowInstruction("앞에 놓인 5개의 공은 각각 단단한 정도가 다릅니다.\n각 공의 강성 차이를 충분히 익혀주세요.\n준비가 되면 오른쪽 '확인' 버튼을 눌러 다음 단계로 진행합니다.");
         if (tutorialStartClip != null) audioSource.PlayOneShot(tutorialStartClip);
 
         uiManager.ShowTutorialButtons();
         yield return new WaitUntil(() => hasConfirmedTutorial);
-
-        // [수정] 튜토리얼 공을 '파괴'하는 대신 '비활성화'
+        
         objectSpawner.DeactivateTutorialBalls();
         uiManager.HideAllButtons();
+        hasConfirmedTutorial = false;
 
-        // --- 2. 메인 실험 블록 반복 ---
+        // --- 2. 튜토리얼 세션 ---
+        currentState = ExperimentState.RealTutorial;
+
+        // 튜토리얼용 공 개수
+        int tutorialBallCount = 5; 
+        
+        uiManager.ShowInstruction("이제 본 실험과 동일한 방식의 튜토리얼을 시작하겠습니다.\n컨베이어 벨트에서 나오는 공을 잡고 강성을 판단한 후, \n알맞은 상자에 넣어주세요.");
+        yield return new WaitForSeconds(5f);
+        uiManager.HideInstruction();
+
+        SetAllBeltsMoving(true, conveyorBeltSpeed);
+        
+        objectSpawner.StartSpawningForBlock(ExperimentCondition.Base, tutorialBallCount);
+        
+        yield return new WaitUntil(() => objectSpawner.IsAllBallsEntered());
+        yield return new WaitUntil(() => !isWaitingForConfidence);
+        yield return new WaitForSeconds(0.5f);
+
+        objectSpawner.ClearAllSpawnedObjects();
+
+        // --- 튜토리얼 종료 안내 ---
+        uiManager.ShowInstruction("튜토리얼이 종료되었습니다.\n준비가 되면 '확인' 버튼을 눌러 본 실험을 시작하세요.");
+        uiManager.ShowTutorialButtons();
+        yield return new WaitUntil(() => hasConfirmedTutorial);
+        uiManager.HideAllButtons();
+        hasConfirmedTutorial = false;
+
+        // --- 3. 메인 실험 블록 반복 ---
         while (currentBlockIndex < experimentSequence.Count)
         {
             Debug.Log($"[ExperimentFlowRoutine] --- {currentBlockIndex+1}번째 블록 루프 진입 ---");
@@ -152,7 +177,7 @@ public class ExperimentManager : MonoBehaviour
             currentState = ExperimentState.MainBlock;
 
             dataManager.SetCurrentBlockInfo(visualCondStr);
-            dataManager.SetBlockNumberInfo(currentBlockIndex + 1, experimentSequence.Count); // <-- 추가
+            dataManager.SetBlockNumberInfo(currentBlockIndex + 1, experimentSequence.Count); 
 
             if (grabManager != null)
             {
@@ -177,10 +202,9 @@ public class ExperimentManager : MonoBehaviour
 
             uiManager.ShowInstruction($"{currentBlockIndex + 1} / {experimentSequence.Count} 번째 블록을 시작합니다.");
             if (blockStartClip != null) audioSource.PlayOneShot(blockStartClip);
-
+            yield return new WaitForSeconds(3f);
             uiManager.HideInstruction();
 
-            // ★ 블록 시작 전에 ObjectSpawner의 blocked 상태를 명시적으로 해제
             objectSpawner.SetBlockedStatus(false);
             objectSpawner.StartSpawningForBlock(currentBlock.visualCondition, ballsPerBlock);
 
@@ -229,29 +253,47 @@ public class ExperimentManager : MonoBehaviour
 
     public void BallEnteredBox(int boxID, GameObject ball)
     {
-        if (currentState != ExperimentState.MainBlock) return;
+        // [수정됨] RealTutorial 또는 MainBlock 상태일 때 로직을 실행하도록 변경
+        if (currentState != ExperimentState.MainBlock && currentState != ExperimentState.RealTutorial) return;
 
         _currentBoxID = boxID;
         _currentBall = ball;
         _currentEntryTimestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
 
         isWaitingForConfidence = true;
-
+        isProcessingConfidence = false;
         uiManager.ShowConfidencePanel();
     }
 
     public void OnConfidenceSelected(int confidence)
     {
-        if (_currentBall == null) 
+        if (isProcessingConfidence)
+        {
+            Debug.LogWarning("이미 확신도 처리가 진행 중이므로 중복 호출을 무시합니다.");
+            return;
+        }
+        
+        isProcessingConfidence = true;
+        uiManager.HideConfidencePanel();
+
+        if (_currentBall == null)
         {
             Debug.Log("_currentBall이 null입니다!");
             return;
         }
+        
+        // RealTutorial에서는 데이터를 기록하지 않고, 공이 들어갔다는 사실만 알림
+        if (currentState == ExperimentState.RealTutorial)
+        {
+            // objectSpawner.NotifyBallEnteredBox();
+        }
+        // MainBlock에서는 데이터를 기록
+        else if (currentState == ExperimentState.MainBlock)
+        {
+            dataManager.RecordBallEntry(_currentBoxID, _currentBall, _currentEntryTimestamp, confidence);
+        }
 
-        uiManager.HideConfidencePanel();
-
-        dataManager.RecordBallEntry(_currentBoxID, _currentBall, _currentEntryTimestamp, confidence);
-
+        Destroy(_currentBall);
         _currentBall = null;
 
         isWaitingForConfidence = false;
@@ -261,7 +303,8 @@ public class ExperimentManager : MonoBehaviour
 
     public void SetSystemBlocked(bool isBlocked)
     {
-        if (currentState == ExperimentState.MainBlock)
+        // [수정됨] RealTutorial 또는 MainBlock 상태일 때 시스템을 멈추도록 변경
+        if (currentState == ExperimentState.MainBlock || currentState == ExperimentState.RealTutorial)
         {
             objectSpawner.SetBlockedStatus(isBlocked);
             SetAllBeltsMoving(!isBlocked, conveyorBeltSpeed);

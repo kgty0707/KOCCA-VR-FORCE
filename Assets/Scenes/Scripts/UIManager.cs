@@ -81,7 +81,7 @@ public class UIManager : MonoBehaviour
     {
         if (instructionPanel == null) return;
         instructionPanel.SetActive(true);
-        instructionText.text = "실험이 모두 종료되었습니다.\n수고하셨습니다.";
+        instructionText.text = "실험이 모두 종료되었습니다:)\n참여해주셔서 감사합니다!";
     }
 
     public void ShowConfidencePanel()
